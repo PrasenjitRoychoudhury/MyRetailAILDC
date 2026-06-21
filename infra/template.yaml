@@ -6,23 +6,9 @@ Parameters:
   Environment:
     Type: String
     Default: prod
-  JwtSecret:
-    Type: AWS::SSM::Parameter::Value<SecureString>
-    Default: /retail/jwt-secret
-
-Globals:
-  Function:
-    Timeout: 30
-    Runtime: python3.12
-    Environment:
-      Variables:
-        DYNAMODB_TABLE: retail-platform
-        AWS_DEFAULT_REGION: !Ref AWS::Region
-        ENV: !Ref Environment
 
 Resources:
 
-  # ─── DynamoDB ────────────────────────────────────────────────────
   RetailTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -55,13 +41,11 @@ Resources:
         AttributeName: expires_at
         Enabled: true
 
-  # ─── EventBridge ─────────────────────────────────────────────────
   RetailEventBus:
     Type: AWS::Events::EventBus
     Properties:
       Name: retail-events
 
-  # ─── App Runner IAM Role ─────────────────────────────────────────
   AppRunnerInstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -98,7 +82,6 @@ Resources:
                 Action: events:PutEvents
                 Resource: !GetAtt RetailEventBus.Arn
 
-  # ─── App Runner Access Role (for ECR) ────────────────────────────
   AppRunnerAccessRole:
     Type: AWS::IAM::Role
     Properties:
@@ -113,25 +96,25 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
 
-  # ─── App Runner Services ─────────────────────────────────────────
   ProductCatalogueService:
     Type: AWS::AppRunner::Service
     Properties:
       ServiceName: retail-product-catalogue
       InstanceConfiguration:
-        Cpu: "0.25 vCPU"
-        Memory: "0.5 GB"
+        Cpu: "1 vCPU"
+        Memory: "2 GB"
         InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
       SourceConfiguration:
         AuthenticationConfiguration:
           AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
         ImageRepository:
-          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retail/product-catalogue:latest"
+          ImageIdentifier: "820242904343.dkr.ecr.us-east-1.amazonaws.com/retail/product-catalogue:latest"
           ImageRepositoryType: ECR
           ImageConfiguration:
             Port: "8001"
             RuntimeEnvironmentVariables:
               DYNAMODB_TABLE: retail-platform
+              AWS_DEFAULT_REGION: us-east-1
               ENV: !Ref Environment
       HealthCheckConfiguration:
         Path: /v1/health
@@ -142,19 +125,20 @@ Resources:
     Properties:
       ServiceName: retail-cart
       InstanceConfiguration:
-        Cpu: "0.25 vCPU"
-        Memory: "0.5 GB"
+        Cpu: "1 vCPU"
+        Memory: "2 GB"
         InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
       SourceConfiguration:
         AuthenticationConfiguration:
           AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
         ImageRepository:
-          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retail/cart:latest"
+          ImageIdentifier: "820242904343.dkr.ecr.us-east-1.amazonaws.com/retail/cart:latest"
           ImageRepositoryType: ECR
           ImageConfiguration:
             Port: "8002"
             RuntimeEnvironmentVariables:
               DYNAMODB_TABLE: retail-platform
+              AWS_DEFAULT_REGION: us-east-1
               PRODUCT_CATALOGUE_URL: !Sub "https://${ProductCatalogueService.ServiceUrl}"
               ENV: !Ref Environment
       HealthCheckConfiguration:
@@ -166,19 +150,20 @@ Resources:
     Properties:
       ServiceName: retail-order
       InstanceConfiguration:
-        Cpu: "0.25 vCPU"
-        Memory: "0.5 GB"
+        Cpu: "1 vCPU"
+        Memory: "2 GB"
         InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
       SourceConfiguration:
         AuthenticationConfiguration:
           AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
         ImageRepository:
-          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retail/order:latest"
+          ImageIdentifier: "820242904343.dkr.ecr.us-east-1.amazonaws.com/retail/order:latest"
           ImageRepositoryType: ECR
           ImageConfiguration:
             Port: "8003"
             RuntimeEnvironmentVariables:
               DYNAMODB_TABLE: retail-platform
+              AWS_DEFAULT_REGION: us-east-1
               ENV: !Ref Environment
       HealthCheckConfiguration:
         Path: /v1/health
@@ -189,20 +174,21 @@ Resources:
     Properties:
       ServiceName: retail-user-auth
       InstanceConfiguration:
-        Cpu: "0.25 vCPU"
-        Memory: "0.5 GB"
+        Cpu: "1 vCPU"
+        Memory: "2 GB"
         InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
       SourceConfiguration:
         AuthenticationConfiguration:
           AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
         ImageRepository:
-          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retail/user-auth:latest"
+          ImageIdentifier: "820242904343.dkr.ecr.us-east-1.amazonaws.com/retail/user-auth:latest"
           ImageRepositoryType: ECR
           ImageConfiguration:
             Port: "8004"
             RuntimeEnvironmentVariables:
               DYNAMODB_TABLE: retail-platform
-              JWT_SECRET: !Ref JwtSecret
+              AWS_DEFAULT_REGION: us-east-1
+              JWT_SECRET: retail-jwt-secret-change-in-prod
               ENV: !Ref Environment
       HealthCheckConfiguration:
         Path: /v1/health
@@ -213,47 +199,28 @@ Resources:
     Properties:
       ServiceName: retail-search
       InstanceConfiguration:
-        Cpu: "0.25 vCPU"
-        Memory: "0.5 GB"
+        Cpu: "1 vCPU"
+        Memory: "2 GB"
         InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
       SourceConfiguration:
         AuthenticationConfiguration:
           AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
         ImageRepository:
-          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retail/search:latest"
+          ImageIdentifier: "820242904343.dkr.ecr.us-east-1.amazonaws.com/retail/search:latest"
           ImageRepositoryType: ECR
           ImageConfiguration:
             Port: "8005"
             RuntimeEnvironmentVariables:
               DYNAMODB_TABLE: retail-platform
+              AWS_DEFAULT_REGION: us-east-1
               ENV: !Ref Environment
       HealthCheckConfiguration:
         Path: /v1/health
         Protocol: HTTP
 
-  # ─── API Gateway ─────────────────────────────────────────────────
-  RetailApi:
-    Type: AWS::ApiGatewayV2::Api
-    Properties:
-      Name: retail-api
-      ProtocolType: HTTP
-      CorsConfiguration:
-        AllowOrigins:
-          - "*"
-        AllowMethods:
-          - GET
-          - POST
-          - PUT
-          - DELETE
-          - OPTIONS
-        AllowHeaders:
-          - "*"
-
 Outputs:
   DynamoTableName:
     Value: !Ref RetailTable
-  EventBusName:
-    Value: !Ref RetailEventBus
   ProductCatalogueUrl:
     Value: !Sub "https://${ProductCatalogueService.ServiceUrl}"
   CartUrl:

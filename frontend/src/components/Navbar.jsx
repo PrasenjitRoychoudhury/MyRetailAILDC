@@ -1,16 +1,16 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import axios from 'axios'
+import api from '../api'
 
 export default function Navbar() {
   const [cartCount, setCartCount] = useState(0)
   const sessionId = (() => {
-    let id = localStorage.getItem('session_id')
-    if (!id) { id = crypto.randomUUID(); localStorage.setItem('session_id', id) }
-    return id
+    let s = localStorage.getItem('session_id')
+    if (!s) { s = Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('session_id', s) }
+    return s
   })()
   useEffect(() => {
-    axios.get(`/v1/cart/${sessionId}`).then(r => setCartCount(r.data.item_count)).catch(() => {})
+    api.getCart(sessionId).then(r => setCartCount(r.data.item_count || 0)).catch(() => {})
   }, [])
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200">

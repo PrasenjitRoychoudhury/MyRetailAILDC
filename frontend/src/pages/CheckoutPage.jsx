@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import axios from 'axios'
+import api from '../api'
 
 export default function CheckoutPage() {
   const navigate = useNavigate()
@@ -11,10 +11,10 @@ export default function CheckoutPage() {
   const placeOrder = async (e) => {
     e.preventDefault()
     try {
-      const r = await axios.post(`/v1/cart/${sessionId}/checkout`, { shipping_address: form.address })
+      const r = await api.checkout(sessionId, { shipping_address: form.address })
       setOrdered(r.data)
     } catch (err) {
-      alert(err.response?.data?.detail || 'Checkout failed')
+      alert(err.response?.data?.detail || 'Checkout failed — cart may be empty')
     }
   }
 

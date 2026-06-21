@@ -1,22 +1,24 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import axios from 'axios'
+import api from '../api'
 
 export default function CartPage() {
   const [cart, setCart] = useState(null)
   const navigate = useNavigate()
-  const sessionId = localStorage.getItem('session_id') || crypto.randomUUID()
+  const sessionId = (() => {
+    let s = localStorage.getItem('session_id')
+    if (!s) { s = Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('session_id', s) }
+    return s
+  })()
 
-  const fetchCart = () => axios.get(`/v1/cart/${sessionId}`).then(r => setCart(r.data)).catch(() => setCart({ items: [], subtotal: 0 }))
+  const fetchCart = () => api.getCart(sessionId)
+    .then(r => setCart(r.data))
+    .catch(() => setCart({ items: [], subtotal: 0, item_count: 0 }))
 
   useEffect(() => { fetchCart() }, [])
 
-  const updateQty = (productId, qty) => {
-    axios.put(`/v1/cart/${sessionId}/items/${productId}`, { qty }).then(fetchCart)
-  }
-  const removeItem = (productId) => {
-    axios.delete(`/v1/cart/${sessionId}/items/${productId}`).then(fetchCart)
-  }
+  const updateQty = (pid, qty) => api.updateCart(sessionId, pid, { qty }).then(fetchCart)
+  const removeItem = (pid) => api.removeFromCart(sessionId, pid).then(fetchCart)
 
   if (!cart) return <div className="flex justify-center items-center h-64"><div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full"/></div>
 
@@ -52,7 +54,7 @@ export default function CartPage() {
               <span className="text-indigo-600">£{Number(cart.subtotal).toFixed(2)}</span>
             </div>
             <button onClick={() => navigate('/checkout')}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-medium transition-colors">
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-medium">
               Proceed to Checkout
             </button>
           </div>

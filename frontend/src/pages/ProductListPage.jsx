@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import axios from 'axios'
+import api from '../api'
 
 export default function ProductListPage() {
   const [products, setProducts] = useState([])
@@ -10,24 +10,23 @@ export default function ProductListPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    axios.get('/v1/categories').then(r => setCategories(r.data.categories)).catch(() => {})
+    api.getCategories().then(r => setCategories(r.data.categories)).catch(() => {})
   }, [])
 
   useEffect(() => {
     setLoading(true)
-    const url = search
-      ? `/v1/search?q=${encodeURIComponent(search)}${selectedCat ? `&category=${selectedCat}` : ''}`
-      : `/v1/products${selectedCat ? `?category=${selectedCat}` : ''}`
-    axios.get(url).then(r => {
-      setProducts(r.data.products || r.data.results || [])
-    }).finally(() => setLoading(false))
+    const req = search
+      ? api.search({ q: search, ...(selectedCat && { category: selectedCat }) })
+      : api.getProducts(selectedCat ? { category: selectedCat } : {})
+    req.then(r => setProducts(r.data.products || r.data.results || []))
+       .finally(() => setLoading(false))
   }, [selectedCat, search])
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+      <div className="mb-6">
         <input
-          className="border border-gray-300 rounded-lg px-4 py-2 flex-1 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="border border-gray-300 rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"
           placeholder="Search products..."
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -35,19 +34,19 @@ export default function ProductListPage() {
       </div>
       <div className="flex gap-2 flex-wrap mb-6">
         <button onClick={() => setSelectedCat(null)}
-          className={`px-4 py-1 rounded-full text-sm border ${!selectedCat ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:border-indigo-400'}`}>
+          className={`px-4 py-1 rounded-full text-sm border ${!selectedCat ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}`}>
           All
         </button>
         {categories.map(c => (
           <button key={c.slug} onClick={() => setSelectedCat(c.slug)}
-            className={`px-4 py-1 rounded-full text-sm border capitalize ${selectedCat === c.slug ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:border-indigo-400'}`}>
+            className={`px-4 py-1 rounded-full text-sm border ${selectedCat===c.slug ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}`}>
             {c.display_name}
           </button>
         ))}
       </div>
       {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
-          {[...Array(8)].map((_, i) => <div key={i} className="bg-gray-200 animate-pulse rounded-xl h-64"/>)}
+          {[...Array(8)].map((_,i) => <div key={i} className="bg-gray-200 animate-pulse rounded-xl h-64"/>)}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">

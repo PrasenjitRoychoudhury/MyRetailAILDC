@@ -1,0 +1,94 @@
+version: "3.9"
+
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: dynamodb-local
+    ports:
+      - "8000:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8000/shell || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  product-catalogue:
+    build: ./services/product-catalogue
+    container_name: svc-product-catalogue
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_TABLE=retail-platform
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+      - ENV=local
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+
+  cart:
+    build: ./services/cart
+    container_name: svc-cart
+    ports:
+      - "8002:8002"
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_TABLE=retail-platform
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+      - PRODUCT_CATALOGUE_URL=http://product-catalogue:8001
+      - ENV=local
+    depends_on:
+      - dynamodb-local
+      - product-catalogue
+
+  order:
+    build: ./services/order
+    container_name: svc-order
+    ports:
+      - "8003:8003"
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_TABLE=retail-platform
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+      - ENV=local
+    depends_on:
+      - dynamodb-local
+
+  user-auth:
+    build: ./services/user-auth
+    container_name: svc-user-auth
+    ports:
+      - "8004:8004"
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_TABLE=retail-platform
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+      - JWT_SECRET=local-dev-secret-change-in-prod
+      - ENV=local
+    depends_on:
+      - dynamodb-local
+
+  search:
+    build: ./services/search
+    container_name: svc-search
+    ports:
+      - "8005:8005"
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_TABLE=retail-platform
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+      - ENV=local
+    depends_on:
+      - dynamodb-local
+      - product-catalogue

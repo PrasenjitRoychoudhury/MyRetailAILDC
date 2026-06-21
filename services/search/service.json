@@ -1,0 +1,1 @@
+{"service_id":"SVC-5","name":"Search Service","port":8005,"dynamo_pk_prefixes":["SEARCH#"],"dynamo_forbidden_prefixes":["CART#","ORDER#","USER#"],"events_published":[],"events_consumed":[],"confluence_fr_ids":["FR-004"],"app_runner_service_name":"retail-search","ecr_repo":"retail/search","health_endpoint":"/v1/health"}

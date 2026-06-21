@@ -1,0 +1,1 @@
+{"service_id":"SVC-4","name":"User & Auth Service","port":8004,"dynamo_pk_prefixes":["USER#"],"dynamo_forbidden_prefixes":["PRODUCT#","CATEGORY#","CART#","ORDER#","SEARCH#"],"events_published":[],"events_consumed":[],"confluence_fr_ids":["FR-004"],"app_runner_service_name":"retail-user-auth","ecr_repo":"retail/user-auth","health_endpoint":"/v1/health"}

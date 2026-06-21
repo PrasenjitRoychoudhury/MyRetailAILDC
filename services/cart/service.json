@@ -1,0 +1,1 @@
+{"service_id":"SVC-2","name":"Shopping Cart Service","port":8002,"dynamo_pk_prefixes":["CART#"],"dynamo_forbidden_prefixes":["PRODUCT#","CATEGORY#","ORDER#","USER#","SEARCH#"],"events_published":["cart.checked_out"],"events_consumed":[],"confluence_fr_ids":["FR-003"],"app_runner_service_name":"retail-cart","ecr_repo":"retail/cart","health_endpoint":"/v1/health"}

@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: RetailAI LDC Platform — Phase 0
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+  JwtSecret:
+    Type: AWS::SSM::Parameter::Value<SecureString>
+    Default: /retail/jwt-secret
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: python3.12
+    Environment:
+      Variables:
+        DYNAMODB_TABLE: retail-platform
+        AWS_DEFAULT_REGION: !Ref AWS::Region
+        ENV: !Ref Environment
+
+Resources:
+
+  # ─── DynamoDB ────────────────────────────────────────────────────
+  RetailTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: retail-platform
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  # ─── EventBridge ─────────────────────────────────────────────────
+  RetailEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: retail-events
+
+  # ─── App Runner IAM Role ─────────────────────────────────────────
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: retail-apprunner-instance-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RetailDynamoAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !GetAtt RetailTable.Arn
+                  - !Sub "${RetailTable.Arn}/index/*"
+        - PolicyName: RetailEventBridgeAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: events:PutEvents
+                Resource: !GetAtt RetailEventBus.Arn
+
+  # ─── App Runner Access Role (for ECR) ────────────────────────────
+  AppRunnerAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: retail-apprunner-access-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  # ─── App Runner Services ─────────────────────────────────────────
+  ProductCatalogueService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: retail-product-catalogue
+      InstanceConfiguration:
+        Cpu: "0.25 vCPU"
+        Memory: "0.5 GB"
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
+        ImageRepository:
+          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retail/product-catalogue:latest"
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8001"
+            RuntimeEnvironmentVariables:
+              DYNAMODB_TABLE: retail-platform
+              ENV: !Ref Environment
+      HealthCheckConfiguration:
+        Path: /v1/health
+        Protocol: HTTP
+
+  CartService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: retail-cart
+      InstanceConfiguration:
+        Cpu: "0.25 vCPU"
+        Memory: "0.5 GB"
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
+        ImageRepository:
+          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retail/cart:latest"
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8002"
+            RuntimeEnvironmentVariables:
+              DYNAMODB_TABLE: retail-platform
+              PRODUCT_CATALOGUE_URL: !Sub "https://${ProductCatalogueService.ServiceUrl}"
+              ENV: !Ref Environment
+      HealthCheckConfiguration:
+        Path: /v1/health
+        Protocol: HTTP
+
+  OrderService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: retail-order
+      InstanceConfiguration:
+        Cpu: "0.25 vCPU"
+        Memory: "0.5 GB"
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
+        ImageRepository:
+          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retail/order:latest"
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8003"
+            RuntimeEnvironmentVariables:
+              DYNAMODB_TABLE: retail-platform
+              ENV: !Ref Environment
+      HealthCheckConfiguration:
+        Path: /v1/health
+        Protocol: HTTP
+
+  UserAuthService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: retail-user-auth
+      InstanceConfiguration:
+        Cpu: "0.25 vCPU"
+        Memory: "0.5 GB"
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
+        ImageRepository:
+          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retail/user-auth:latest"
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8004"
+            RuntimeEnvironmentVariables:
+              DYNAMODB_TABLE: retail-platform
+              JWT_SECRET: !Ref JwtSecret
+              ENV: !Ref Environment
+      HealthCheckConfiguration:
+        Path: /v1/health
+        Protocol: HTTP
+
+  SearchService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: retail-search
+      InstanceConfiguration:
+        Cpu: "0.25 vCPU"
+        Memory: "0.5 GB"
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
+        ImageRepository:
+          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retail/search:latest"
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8005"
+            RuntimeEnvironmentVariables:
+              DYNAMODB_TABLE: retail-platform
+              ENV: !Ref Environment
+      HealthCheckConfiguration:
+        Path: /v1/health
+        Protocol: HTTP
+
+  # ─── API Gateway ─────────────────────────────────────────────────
+  RetailApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: retail-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - "*"
+
+Outputs:
+  DynamoTableName:
+    Value: !Ref RetailTable
+  EventBusName:
+    Value: !Ref RetailEventBus
+  ProductCatalogueUrl:
+    Value: !Sub "https://${ProductCatalogueService.ServiceUrl}"
+  CartUrl:
+    Value: !Sub "https://${CartService.ServiceUrl}"
+  OrderUrl:
+    Value: !Sub "https://${OrderService.ServiceUrl}"
+  UserAuthUrl:
+    Value: !Sub "https://${UserAuthService.ServiceUrl}"
+  SearchUrl:
+    Value: !Sub "https://${SearchService.ServiceUrl}"

@@ -1,0 +1,13 @@
+{
+  "service_id": "SVC-1",
+  "name": "Product Catalogue Service",
+  "port": 8001,
+  "dynamo_pk_prefixes": ["PRODUCT#", "CATEGORY#"],
+  "dynamo_forbidden_prefixes": ["CART#", "ORDER#", "USER#", "SEARCH#"],
+  "events_published": [],
+  "events_consumed": [],
+  "confluence_fr_ids": ["FR-001", "FR-002", "NFR-001", "NFR-002"],
+  "app_runner_service_name": "retail-product-catalogue",
+  "ecr_repo": "retail/product-catalogue",
+  "health_endpoint": "/v1/health"
+}

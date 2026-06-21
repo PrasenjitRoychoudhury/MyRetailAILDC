@@ -1,0 +1,23 @@
+name: Destroy — manual teardown (use with caution)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Empty S3 bucket
+        run: aws s3 rm s3://${{ secrets.FRONTEND_BUCKET }} --recursive
+      - name: Delete CloudFormation stack
+        run: aws cloudformation delete-stack --stack-name retail-platform

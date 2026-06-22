@@ -67,7 +67,7 @@ jobs:
           npm run build
 
       - name: Deploy to S3
-        run: aws s3 sync frontend/dist/ s3://${{ secrets.FRONTEND_BUCKET }} --delete
+        run: aws s3 sync frontend/dist/ s3://${{ secrets.FRONTEND_BUCKET }} --exclude "images/*" --region us-east-1
 
       - name: Invalidate CloudFront
         run: |

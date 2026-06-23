@@ -92,3 +92,18 @@ services:
     depends_on:
       - dynamodb-local
       - product-catalogue
+
+  coupon:
+    build: ./services/coupon
+    container_name: svc-coupon
+    ports:
+      - "8006:8006"
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_TABLE=retail-platform
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+      - ENV=local
+    depends_on:
+      - dynamodb-local

@@ -218,6 +218,30 @@ Resources:
         Path: /v1/health
         Protocol: HTTP
 
+  CouponService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: retail-coupon
+      InstanceConfiguration:
+        Cpu: "1 vCPU"
+        Memory: "2 GB"
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
+        ImageRepository:
+          ImageIdentifier: "820242904343.dkr.ecr.us-east-1.amazonaws.com/retail/coupon-service:latest"
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8006"
+            RuntimeEnvironmentVariables:
+              DYNAMODB_TABLE: retail-platform
+              AWS_DEFAULT_REGION: us-east-1
+              ENV: !Ref Environment
+      HealthCheckConfiguration:
+        Path: /v1/health
+        Protocol: HTTP
+
 Outputs:
   DynamoTableName:
     Value: !Ref RetailTable
@@ -231,3 +255,5 @@ Outputs:
     Value: !Sub "https://${UserAuthService.ServiceUrl}"
   SearchUrl:
     Value: !Sub "https://${SearchService.ServiceUrl}"
+  CouponUrl:
+    Value: !Sub "https://${CouponService.ServiceUrl}"

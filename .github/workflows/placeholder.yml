@@ -1,0 +1,27 @@
+name: Push placeholder image
+on:
+  workflow_dispatch:
+    inputs:
+      service_name:
+        required: true
+        type: string
+
+jobs:
+  push-placeholder:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Push placeholder
+        run: |
+          docker pull python:3.12-slim
+          docker tag python:3.12-slim \
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/retail/${{ inputs.service_name }}:latest
+          docker push \
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/retail/${{ inputs.service_name }}:latest

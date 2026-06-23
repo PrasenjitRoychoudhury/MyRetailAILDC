@@ -1,0 +1,16 @@
+{
+  "service_id": "SVC-7",
+  "name": "Wishlist Service",
+  "port": 8007,
+  "dynamo_pk_prefixes": ["SHARE#"],
+  "dynamo_shared_prefixes": ["USER#"],
+  "dynamo_wishlist_sk_patterns": ["WISHLIST#default", "WISHLIST_ITEM#*"],
+  "dynamo_forbidden_prefixes": ["PRODUCT#", "CATEGORY#", "ORDER#", "CART#", "SEARCH#", "COUPON#"],
+  "events_published": [],
+  "events_consumed": [],
+  "confluence_fr_ids": ["FR-012"],
+  "app_runner_service_name": "retail-wishlist",
+  "ecr_repo": "retail/wishlist-service",
+  "ecr_registry": "820242904343.dkr.ecr.us-east-1.amazonaws.com",
+  "health_endpoint": "/v1/health"
+}

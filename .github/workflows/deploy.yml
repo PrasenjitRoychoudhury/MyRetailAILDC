@@ -249,10 +249,6 @@ jobs:
             --paths "/*"
 
   deploy-notification-service:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      contains(toJson(github.event.commits.*.modified), 'services/notification-service') ||
-      contains(toJson(github.event.commits.*.added), 'services/notification-service')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -274,4 +270,5 @@ jobs:
           aws apprunner update-service \
             --service-arn ${{ secrets.APPRUNNER_ARN_NOTIFICATION_SERVICE }} \
             --source-configuration "{\"ImageRepository\":{\"ImageIdentifier\":\"$IMAGE\",\"ImageRepositoryType\":\"ECR\"}}"
+
 

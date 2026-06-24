@@ -201,6 +201,21 @@ jobs:
           docker build -t $IMAGE ./services/address-service
           docker push $IMAGE
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+      - name: Wait for App Runner to be ready
+        run: |
+          echo "Waiting for App Runner service to be RUNNING..."
+          for i in $(seq 1 20); do
+            STATUS=$(aws apprunner list-services --region us-east-1 \
+              --query "ServiceSummaryList[?ServiceName=='retail-address-service'].Status" \
+              --output text)
+            echo "Status: $STATUS"
+            if [ "$STATUS" = "RUNNING" ]; then
+              echo "Service is RUNNING, proceeding with deploy"
+              break
+            fi
+            echo "Waiting 15s... ($i/20)"
+            sleep 15
+          done
       - name: Deploy to App Runner
         run: |
           aws apprunner update-service \
@@ -259,3 +274,4 @@ jobs:
           aws apprunner update-service \
             --service-arn ${{ secrets.APPRUNNER_ARN_NOTIFICATION_SERVICE }} \
             --source-configuration "{\"ImageRepository\":{\"ImageIdentifier\":\"$IMAGE\",\"ImageRepositoryType\":\"ECR\"}}"
+

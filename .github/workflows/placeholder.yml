@@ -5,7 +5,6 @@ on:
       service_name:
         required: true
         type: string
-
 jobs:
   push-placeholder:
     runs-on: ubuntu-latest
@@ -18,10 +17,27 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
       - uses: aws-actions/amazon-ecr-login@v2
-      - name: Push placeholder
+      - name: Build and push FastAPI placeholder
         run: |
-          docker pull python:3.12-slim
-          docker tag python:3.12-slim \
+          mkdir -p /tmp/placeholder
+          cat > /tmp/placeholder/main.py << 'PYEOF'
+from fastapi import FastAPI
+app = FastAPI()
+@app.get("/")
+def root(): return {"status": "ok"}
+@app.get("/health")
+def health(): return {"status": "healthy"}
+PYEOF
+          cat > /tmp/placeholder/Dockerfile << 'DEOF'
+FROM python:3.12-slim
+WORKDIR /app
+RUN pip install fastapi uvicorn --no-cache-dir
+COPY main.py .
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+DEOF
+          docker build -t placeholder /tmp/placeholder
+          docker tag placeholder \
             ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/retail/${{ inputs.service_name }}:latest
           docker push \
             ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/retail/${{ inputs.service_name }}:latest

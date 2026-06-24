@@ -1,13 +1,8 @@
-import os
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from app.routes import router
 
-app = FastAPI(
-    title="notification-service",
-    description="Notification service for retail platform",
-    version="1.0.0"
-)
+app = FastAPI(title="notification-service", version="1.0.0")
 
 app.include_router(router)
 

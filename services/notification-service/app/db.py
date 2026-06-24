@@ -1,216 +1,198 @@
-import boto3
 import os
-from typing import Optional, Tuple, List
-from datetime import datetime
-from app.models import Notification, NotificationUpdate
-from botocore.exceptions import ClientError
+import boto3
+from boto3.dynamodb.conditions import Key, Attr
+from typing import Optional, Any
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 TABLE_NAME = os.getenv("TABLE_NAME", "retail-platform")
 
-dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(TABLE_NAME)
+_executor = ThreadPoolExecutor(max_workers=10)
+_dynamodb = None
 
-async def create_notification(
-    notification_id: str,
-    user_id: str,
-    product_id: str,
-    notification_type: str,
-    message: str,
-    read: bool = False
-) -> Notification:
+def get_dynamodb_resource():
+    global _dynamodb
+    if _dynamodb is None:
+        _dynamodb = boto3.resource(
+            "dynamodb",
+            region_name=os.getenv("AWS_REGION", "us-east-1")
+        )
+    return _dynamodb
+
+def get_table():
+    dynamodb = get_dynamodb_resource()
+    return dynamodb.Table(TABLE_NAME)
+
+async def create_notification(notification_data: dict) -> bool:
     """
     Create a new notification in DynamoDB.
+    PK: USER#{user_id}, SK: NOTIF#{notification_id}
     """
-    now = datetime.utcnow().isoformat()
+    table = get_table()
+    pk = f"USER#{notification_data['user_id']}"
+    sk = notification_data['notification_id']
     
     item = {
-        "PK": f"USER#{user_id}",
-        "SK": f"NOTIF#{notification_id}",
-        "notification_id": notification_id,
-        "user_id": user_id,
-        "product_id": product_id,
-        "notification_type": notification_type,
-        "message": message,
-        "read": read,
-        "created_at": now,
-        "updated_at": now
+        "PK": pk,
+        "SK": sk,
+        "user_id": notification_data['user_id'],
+        "product_id": notification_data['product_id'],
+        "event_type": notification_data['event_type'],
+        "message": notification_data['message'],
+        "metadata": notification_data.get('metadata', {}),
+        "created_at": notification_data['created_at'],
+        "read": notification_data['read']
     }
     
-    try:
+    def _put_item():
         table.put_item(Item=item)
-        return Notification(
-            notification_id=notification_id,
-            user_id=user_id,
-            product_id=product_id,
-            notification_type=notification_type,
-            message=message,
-            read=read,
-            created_at=datetime.fromisoformat(now),
-            updated_at=datetime.fromisoformat(now)
-        )
-    except ClientError as e:
-        raise Exception(f"DynamoDB error: {str(e)}")
+        return True
+    
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, _put_item)
+    except Exception as e:
+        print(f"Error creating notification: {e}")
+        return False
 
-async def get_notification(notification_id: str) -> Optional[Notification]:
+async def get_notification(notification_id: str) -> Optional[dict]:
     """
     Retrieve a notification by ID.
-    Note: In a real scenario, you'd need to query by GSI or scan since PK is needed.
+    Scans for SK matching the notification_id.
     """
-    try:
-        # This is a simplified approach; in production, use GSI
+    table = get_table()
+    
+    def _scan():
         response = table.scan(
-            FilterExpression="notification_id = :notif_id",
-            ExpressionAttributeValues={":notif_id": notification_id}
+            FilterExpression=Attr('SK').eq(notification_id)
         )
-        
-        if response["Items"]:
-            item = response["Items"][0]
-            return _item_to_notification(item)
+        items = response.get('Items', [])
+        return items[0] if items else None
+    
+    try:
+        loop = asyncio.get_event_loop()
+        item = await loop.run_in_executor(_executor, _scan)
+        if item:
+            return {
+                "notification_id": item['SK'],
+                "user_id": item['user_id'],
+                "product_id": item['product_id'],
+                "event_type": item['event_type'],
+                "message": item['message'],
+                "metadata": item.get('metadata', {}),
+                "created_at": item['created_at'],
+                "read": item['read']
+            }
         return None
-    except ClientError as e:
-        raise Exception(f"DynamoDB error: {str(e)}")
+    except Exception as e:
+        print(f"Error getting notification: {e}")
+        return None
 
-async def get_user_notifications(
+async def list_user_notifications(
     user_id: str,
-    skip: int = 0,
     limit: int = 10,
-    read: Optional[bool] = None
-) -> Tuple[List[Notification], int]:
+    unread_only: bool = False
+) -> list[dict]:
     """
-    Retrieve notifications for a user with pagination.
+    List notifications for a user.
+    PK: USER#{user_id}, SK begins with NOTIF#
     """
-    try:
-        query_kwargs = {
-            "KeyConditionExpression": "PK = :pk",
-            "ExpressionAttributeValues": {":pk": f"USER#{user_id}"},
-            "ScanIndexForward": False  # Most recent first
-        }
+    table = get_table()
+    pk = f"USER#{user_id}"
+    
+    def _query():
+        filter_expr = Attr('SK').begins_with('NOTIF#')
+        if unread_only:
+            filter_expr = filter_expr & Attr('read').eq(False)
         
-        if read is not None:
-            query_kwargs["FilterExpression"] = "#r = :read"
-            query_kwargs["ExpressionAttributeNames"] = {"#r": "read"}
-            query_kwargs["ExpressionAttributeValues"]["]read"] = read
-        
-        response = table.query(**query_kwargs)
-        
-        items = response.get("Items", [])
-        total = response.get("Count", 0)
-        
-        # Apply pagination
-        paginated_items = items[skip : skip + limit]
-        
-        notifications = [_item_to_notification(item) for item in paginated_items]
-        return notifications, total
-    except ClientError as e:
-        raise Exception(f"DynamoDB error: {str(e)}")
-
-async def update_notification(
-    notification_id: str,
-    notification_update: NotificationUpdate
-) -> Optional[Notification]:
-    """
-    Update a notification.
-    """
-    try:
-        # First, get the notification to find its PK and SK
-        response = table.scan(
-            FilterExpression="notification_id = :notif_id",
-            ExpressionAttributeValues={":notif_id": notification_id}
+        response = table.query(
+            KeyConditionExpression=Key('PK').eq(pk),
+            FilterExpression=filter_expr,
+            Limit=limit,
+            ScanIndexForward=False
         )
-        
-        if not response["Items"]:
-            return None
-        
-        item = response["Items"][0]
-        pk = item["PK"]
-        sk = item["SK"]
-        
-        update_expression = "SET updated_at = :now"
-        expr_attr_values = {":now": datetime.utcnow().isoformat()}
-        expr_attr_names = {}
-        
-        if notification_update.read is not None:
-            update_expression += ", #r = :read"
-            expr_attr_names["#r"] = "read"
-            expr_attr_values[":read"] = notification_update.read
-        
-        if notification_update.message is not None:
-            update_expression += ", message = :msg"
-            expr_attr_values[":msg"] = notification_update.message
-        
-        kwargs = {
-            "Key": {"PK": pk, "SK": sk},
-            "UpdateExpression": update_expression,
-            "ExpressionAttributeValues": expr_attr_values,
-            "ReturnValues": "ALL_NEW"
-        }
-        
-        if expr_attr_names:
-            kwargs["ExpressionAttributeNames"] = expr_attr_names
-        
-        response = table.update_item(**kwargs)
-        return _item_to_notification(response["Attributes"])
-    except ClientError as e:
-        raise Exception(f"DynamoDB error: {str(e)}")
+        items = response.get('Items', [])
+        return items
+    
+    try:
+        loop = asyncio.get_event_loop()
+        items = await loop.run_in_executor(_executor, _query)
+        notifications = []
+        for item in items:
+            notifications.append({
+                "notification_id": item['SK'],
+                "user_id": item['user_id'],
+                "product_id": item['product_id'],
+                "event_type": item['event_type'],
+                "message": item['message'],
+                "metadata": item.get('metadata', {}),
+                "created_at": item['created_at'],
+                "read": item['read']
+            })
+        return notifications
+    except Exception as e:
+        print(f"Error listing notifications: {e}")
+        return []
 
-async def mark_as_read(notification_id: str) -> Optional[Notification]:
+async def update_notification(notification_id: str, updates: dict) -> bool:
     """
-    Mark a notification as read.
+    Update a notification's attributes.
     """
-    return await update_notification(notification_id, NotificationUpdate(read=True))
+    table = get_table()
+    
+    def _scan_and_update():
+        response = table.scan(
+            FilterExpression=Attr('SK').eq(notification_id)
+        )
+        items = response.get('Items', [])
+        if not items:
+            return False
+        
+        item = items[0]
+        pk = item['PK']
+        sk = item['SK']
+        
+        update_expr = "SET " + ", ".join([f"{k}=:{k}" for k in updates.keys()])
+        expr_values = {f":{k}": v for k, v in updates.items()}
+        
+        table.update_item(
+            Key={"PK": pk, "SK": sk},
+            UpdateExpression=update_expr,
+            ExpressionAttributeValues=expr_values
+        )
+        return True
+    
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, _scan_and_update)
+    except Exception as e:
+        print(f"Error updating notification: {e}")
+        return False
 
 async def delete_notification(notification_id: str) -> bool:
     """
-    Delete a notification.
+    Delete a notification by ID.
     """
-    try:
-        # First, find the notification
+    table = get_table()
+    
+    def _scan_and_delete():
         response = table.scan(
-            FilterExpression="notification_id = :notif_id",
-            ExpressionAttributeValues={":notif_id": notification_id}
+            FilterExpression=Attr('SK').eq(notification_id)
         )
-        
-        if not response["Items"]:
+        items = response.get('Items', [])
+        if not items:
             return False
         
-        item = response["Items"][0]
-        table.delete_item(
-            Key={"PK": item["PK"], "SK": item["SK"]}
-        )
+        item = items[0]
+        pk = item['PK']
+        sk = item['SK']
+        
+        table.delete_item(Key={"PK": pk, "SK": sk})
         return True
-    except ClientError as e:
-        raise Exception(f"DynamoDB error: {str(e)}")
-
-async def get_unread_count(user_id: str) -> int:
-    """
-    Get count of unread notifications for a user.
-    """
+    
     try:
-        response = table.query(
-            KeyConditionExpression="PK = :pk",
-            FilterExpression="#r = :read",
-            ExpressionAttributeValues={
-                ":pk": f"USER#{user_id}",
-                ":read": False
-            },
-            ExpressionAttributeNames={"#r": "read"},
-            Select="COUNT"
-        )
-        return response.get("Count", 0)
-    except ClientError as e:
-        raise Exception(f"DynamoDB error: {str(e)}")
-
-def _item_to_notification(item: dict) -> Notification:
-    """
-    Convert DynamoDB item to Notification model.
-    """
-    return Notification(
-        notification_id=item.get("notification_id"),
-        user_id=item.get("user_id"),
-        product_id=item.get("product_id"),
-        notification_type=item.get("notification_type"),
-        message=item.get("message"),
-        read=item.get("read", False),
-        created_at=datetime.fromisoformat(item.get("created_at")),
-        updated_at=datetime.fromisoformat(item.get("updated_at"))
-    )
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, _scan_and_delete)
+    except Exception as e:
+        print(f"Error deleting notification: {e}")
+        return False

@@ -1,9 +1,10 @@
 import pytest
 from httpx import AsyncClient
+from unittest.mock import AsyncMock, patch, MagicMock
 from app.main import app
-from app.models import NotificationCreate, NotificationUpdate
-from unittest.mock import patch, AsyncMock
+from app.models import NotificationCreate, Notification
 import uuid
+from datetime import datetime
 
 @pytest.fixture
 async def client():
@@ -11,7 +12,7 @@ async def client():
         yield ac
 
 @pytest.mark.asyncio
-async def test_health_endpoint(client):
+async def test_health(client):
     response = await client.get("/health")
     assert response.status_code == 200
     data = response.json()
@@ -19,172 +20,215 @@ async def test_health_endpoint(client):
     assert data["service"] == "notification-service"
 
 @pytest.mark.asyncio
-@patch("app.db.create_notification")
-async def test_create_notification(mock_create, client):
-    mock_notification = {
-        "notification_id": "NOTIF#test-id",
-        "user_id": "USER#123",
-        "product_id": "PROD#456",
-        "notification_type": "stock_update",
+async def test_send_notification(client):
+    with patch('app.db.create_notification', new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = True
+        
+        payload = {
+            "user_id": "USER123",
+            "product_id": "PROD456",
+            "event_type": "added_to_cart",
+            "message": "Product added to cart",
+            "metadata": {"quantity": 1}
+        }
+        
+        response = await client.post("/v1/notifications", json=payload)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["user_id"] == "USER123"
+        assert data["product_id"] == "PROD456"
+        assert data["event_type"] == "added_to_cart"
+        assert data["read"] == False
+        assert "notification_id" in data
+        assert "created_at" in data
+
+@pytest.mark.asyncio
+async def test_send_notification_failure(client):
+    with patch('app.db.create_notification', new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = False
+        
+        payload = {
+            "user_id": "USER123",
+            "product_id": "PROD456",
+            "event_type": "purchase",
+            "message": "Purchase confirmed"
+        }
+        
+        response = await client.post("/v1/notifications", json=payload)
+        assert response.status_code == 500
+        assert "Failed to create notification" in response.json()["detail"]
+
+@pytest.mark.asyncio
+async def test_get_notification(client):
+    notif_id = "NOTIF#test-123"
+    notification_data = {
+        "notification_id": notif_id,
+        "user_id": "USER123",
+        "product_id": "PROD456",
+        "event_type": "stock_alert",
         "message": "Product back in stock",
-        "read": False,
-        "created_at": "2024-01-01T00:00:00",
-        "updated_at": "2024-01-01T00:00:00"
-    }
-    mock_create.return_value = mock_notification
-    
-    payload = {
-        "user_id": "USER#123",
-        "product_id": "PROD#456",
-        "notification_type": "stock_update",
-        "message": "Product back in stock"
+        "metadata": {},
+        "created_at": datetime.utcnow().isoformat(),
+        "read": False
     }
     
-    response = await client.post("/v1/notifications/", json=payload)
-    assert response.status_code == 201
-    data = response.json()
-    assert data["notification_type"] == "stock_update"
-    assert data["message"] == "Product back in stock"
-    mock_create.assert_called_once()
+    with patch('app.db.get_notification', new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = notification_data
+        
+        response = await client.get(f"/v1/notifications/{notif_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["notification_id"] == notif_id
+        assert data["user_id"] == "USER123"
+        assert data["read"] == False
 
 @pytest.mark.asyncio
-@patch("app.db.get_notification")
-async def test_get_notification(mock_get, client):
-    mock_notification = {
-        "notification_id": "NOTIF#test-id",
-        "user_id": "USER#123",
-        "product_id": "PROD#456",
-        "notification_type": "stock_update",
-        "message": "Product back in stock",
-        "read": False,
-        "created_at": "2024-01-01T00:00:00",
-        "updated_at": "2024-01-01T00:00:00"
-    }
-    mock_get.return_value = mock_notification
-    
-    response = await client.get("/v1/notifications/NOTIF#test-id")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["notification_id"] == "NOTIF#test-id"
-    mock_get.assert_called_once()
+async def test_get_notification_not_found(client):
+    with patch('app.db.get_notification', new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = None
+        
+        response = await client.get("/v1/notifications/NOTIF#nonexistent")
+        assert response.status_code == 404
+        assert "Notification not found" in response.json()["detail"]
 
 @pytest.mark.asyncio
-@patch("app.db.get_notification")
-async def test_get_notification_not_found(mock_get, client):
-    mock_get.return_value = None
-    
-    response = await client.get("/v1/notifications/NOTIF#nonexistent")
-    assert response.status_code == 404
-
-@pytest.mark.asyncio
-@patch("app.db.get_user_notifications")
-async def test_get_user_notifications(mock_get_user, client):
-    mock_notifications = [
+async def test_list_notifications(client):
+    user_id = "USER123"
+    notifications = [
         {
             "notification_id": "NOTIF#1",
-            "user_id": "USER#123",
-            "product_id": "PROD#456",
-            "notification_type": "stock_update",
-            "message": "Product back in stock",
-            "read": False,
-            "created_at": "2024-01-01T00:00:00",
-            "updated_at": "2024-01-01T00:00:00"
+            "user_id": user_id,
+            "product_id": "PROD1",
+            "event_type": "added_to_cart",
+            "message": "Added",
+            "metadata": {},
+            "created_at": datetime.utcnow().isoformat(),
+            "read": False
+        },
+        {
+            "notification_id": "NOTIF#2",
+            "user_id": user_id,
+            "product_id": "PROD2",
+            "event_type": "purchase",
+            "message": "Purchased",
+            "metadata": {},
+            "created_at": datetime.utcnow().isoformat(),
+            "read": True
         }
     ]
-    mock_get_user.return_value = (mock_notifications, 1)
     
-    response = await client.get("/v1/notifications/user/USER#123")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["count"] == 1
-    assert len(data["notifications"]) == 1
-    mock_get_user.assert_called_once()
+    with patch('app.db.list_user_notifications', new_callable=AsyncMock) as mock_list:
+        mock_list.return_value = notifications
+        
+        response = await client.get(f"/v1/notifications/user/{user_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 2
+        assert len(data["notifications"]) == 2
+        assert data["notifications"][0]["notification_id"] == "NOTIF#1"
+        assert data["notifications"][1]["read"] == True
 
 @pytest.mark.asyncio
-@patch("app.db.update_notification")
-async def test_update_notification(mock_update, client):
-    mock_notification = {
-        "notification_id": "NOTIF#test-id",
-        "user_id": "USER#123",
-        "product_id": "PROD#456",
-        "notification_type": "stock_update",
-        "message": "Updated message",
-        "read": True,
-        "created_at": "2024-01-01T00:00:00",
-        "updated_at": "2024-01-01T01:00:00"
-    }
-    mock_update.return_value = mock_notification
+async def test_list_notifications_with_filters(client):
+    user_id = "USER123"
+    unread_only_notifications = [
+        {
+            "notification_id": "NOTIF#1",
+            "user_id": user_id,
+            "product_id": "PROD1",
+            "event_type": "added_to_cart",
+            "message": "Added",
+            "metadata": {},
+            "created_at": datetime.utcnow().isoformat(),
+            "read": False
+        }
+    ]
     
-    payload = {"read": True, "message": "Updated message"}
-    response = await client.patch("/v1/notifications/NOTIF#test-id", json=payload)
-    assert response.status_code == 200
-    data = response.json()
-    assert data["read"] is True
-    assert data["message"] == "Updated message"
-    mock_update.assert_called_once()
+    with patch('app.db.list_user_notifications', new_callable=AsyncMock) as mock_list:
+        mock_list.return_value = unread_only_notifications
+        
+        response = await client.get(
+            f"/v1/notifications/user/{user_id}?limit=5&unread_only=true"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 1
+        assert data["notifications"][0]["read"] == False
+        mock_list.assert_called_once_with(user_id, limit=5, unread_only=True)
 
 @pytest.mark.asyncio
-@patch("app.db.mark_as_read")
-async def test_mark_notification_as_read(mock_mark, client):
-    mock_notification = {
-        "notification_id": "NOTIF#test-id",
-        "user_id": "USER#123",
-        "product_id": "PROD#456",
-        "notification_type": "stock_update",
-        "message": "Product back in stock",
-        "read": True,
-        "created_at": "2024-01-01T00:00:00",
-        "updated_at": "2024-01-01T01:00:00"
-    }
-    mock_mark.return_value = mock_notification
-    
-    response = await client.put("/v1/notifications/NOTIF#test-id/read")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["read"] is True
-    mock_mark.assert_called_once()
-
-@pytest.mark.asyncio
-@patch("app.db.delete_notification")
-async def test_delete_notification(mock_delete, client):
-    mock_delete.return_value = True
-    
-    response = await client.delete("/v1/notifications/NOTIF#test-id")
-    assert response.status_code == 204
-    mock_delete.assert_called_once()
-
-@pytest.mark.asyncio
-@patch("app.db.delete_notification")
-async def test_delete_notification_not_found(mock_delete, client):
-    mock_delete.return_value = False
-    
-    response = await client.delete("/v1/notifications/NOTIF#nonexistent")
-    assert response.status_code == 404
-
-@pytest.mark.asyncio
-@patch("app.db.get_unread_count")
-async def test_get_unread_count(mock_count, client):
-    mock_count.return_value = 3
-    
-    response = await client.get("/v1/notifications/user/USER#123/unread-count")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["unread_count"] == 3
-    assert data["user_id"] == "USER#123"
-    mock_count.assert_called_once()
-
-@pytest.mark.asyncio
-async def test_handle_product_event(client):
-    payload = {
-        "product_id": "PROD#456",
-        "product_name": "Test Product",
-        "event_type": "stock",
-        "current_value": "50 units"
+async def test_update_notification_read_status(client):
+    notif_id = "NOTIF#test-123"
+    updated_data = {
+        "notification_id": notif_id,
+        "user_id": "USER123",
+        "product_id": "PROD456",
+        "event_type": "added_to_cart",
+        "message": "Added to cart",
+        "metadata": {},
+        "created_at": datetime.utcnow().isoformat(),
+        "read": True
     }
     
-    response = await client.post("/v1/notifications/product-event", json=payload)
-    assert response.status_code == 201
-    data = response.json()
-    assert data["status"] == "processed"
-    assert data["event_type"] == "stock"
-    assert data["product_id"] == "PROD#456"
+    with patch('app.db.update_notification', new_callable=AsyncMock) as mock_update, \
+         patch('app.db.get_notification', new_callable=AsyncMock) as mock_get:
+        mock_update.return_value = True
+        mock_get.return_value = updated_data
+        
+        response = await client.patch(
+            f"/v1/notifications/{notif_id}",
+            json={"read": True}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["read"] == True
+        mock_update.assert_called_once_with(notif_id, {"read": True})
+
+@pytest.mark.asyncio
+async def test_update_notification_not_found(client):
+    with patch('app.db.update_notification', new_callable=AsyncMock) as mock_update:
+        mock_update.return_value = False
+        
+        response = await client.patch(
+            "/v1/notifications/NOTIF#nonexistent",
+            json={"read": True}
+        )
+        assert response.status_code == 404
+        assert "Notification not found" in response.json()["detail"]
+
+@pytest.mark.asyncio
+async def test_delete_notification(client):
+    notif_id = "NOTIF#test-123"
+    
+    with patch('app.db.delete_notification', new_callable=AsyncMock) as mock_delete:
+        mock_delete.return_value = True
+        
+        response = await client.delete(f"/v1/notifications/{notif_id}")
+        assert response.status_code == 204
+        mock_delete.assert_called_once_with(notif_id)
+
+@pytest.mark.asyncio
+async def test_delete_notification_not_found(client):
+    with patch('app.db.delete_notification', new_callable=AsyncMock) as mock_delete:
+        mock_delete.return_value = False
+        
+        response = await client.delete("/v1/notifications/NOTIF#nonexistent")
+        assert response.status_code == 404
+        assert "Notification not found" in response.json()["detail"]
+
+@pytest.mark.asyncio
+async def test_send_notification_without_metadata(client):
+    with patch('app.db.create_notification', new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = True
+        
+        payload = {
+            "user_id": "USER123",
+            "product_id": "PROD456",
+            "event_type": "purchase",
+            "message": "Order confirmed"
+        }
+        
+        response = await client.post("/v1/notifications", json=payload)
+        assert response.status_code == 201
+        data = response.json()
+        assert "metadata" in data

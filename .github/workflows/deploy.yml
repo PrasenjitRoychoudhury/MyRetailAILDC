@@ -271,3 +271,35 @@ jobs:
             --service-arn ${{ secrets.APPRUNNER_ARN_NOTIFICATION_SERVICE }} \
             --source-configuration "{\"ImageRepository\":{\"ImageIdentifier\":\"$IMAGE\",\"ImageRepositoryType\":\"ECR\"}}"
 
+  deploy-promotion-service:
+    runs-on: ubuntu-latest
+    if: "${{ github.event_name == 'push' }}"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push image
+        run: |
+          IMAGE=${{ env.ECR_REGISTRY }}/retail/promotion-service:${{ github.sha }}
+          docker build -t $IMAGE ./services/promotion-service
+          docker push $IMAGE
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+      - name: Wait for App Runner to be ready
+        run: |
+          for i in $(seq 1 20); do
+            STATUS=$(aws apprunner list-services --region us-east-1 \
+              --query "ServiceSummaryList[?ServiceName=='retail-promotion-service'].Status" \
+              --output text)
+            if [ "$STATUS" = "RUNNING" ]; then break; fi
+            echo "Waiting... ($i/20)"; sleep 15
+          done
+      - name: Deploy to App Runner
+        run: |
+          aws apprunner update-service \
+            --service-arn ${{ secrets.APPRUNNER_ARN_PROMOTION_SERVICE }} \
+            --source-configuration "{\"ImageRepository\":{\"ImageIdentifier\":\"$IMAGE\",\"ImageRepositoryType\":\"ECR\"}}"

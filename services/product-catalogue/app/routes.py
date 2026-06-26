@@ -1,57 +1,80 @@
 from fastapi import APIRouter, HTTPException, Query
-from app.models import ProductResponse, ProductDetail, RatingInfo
-from app.db import get_product_by_id
+from app.db import get_product_by_id, list_products
+from app.models import ProductResponse, ProductDetail, ErrorResponse
+from typing import Optional
 
-router = APIRouter(prefix="/v1", tags=["products"])
+router = APIRouter()
 
-@router.get("/products/{product_id}", response_model=ProductResponse)
-async def get_product_detail(product_id: str):
+@router.get(
+    "/products/{product_id}",
+    response_model=ProductResponse,
+    responses={
+        200: {"model": ProductResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse}
+    }
+)
+async def get_product(product_id: str):
     """
     Retrieve full product details by product ID.
-    Returns product image, name, description, price, category, stock quantity, and rating info.
+    Returns product image, name, description, price, category, stock quantity,
+    average rating, and rating count.
     """
     try:
-        product_data = await get_product_by_id(product_id)
-        
-        if not product_data:
+        product = await get_product_by_id(product_id)
+        if not product:
             raise HTTPException(
                 status_code=404,
-                detail=f"Product with ID {product_id} not found"
+                detail=ErrorResponse(
+                    message=f"Product {product_id} not found",
+                    error_code="PRODUCT_NOT_FOUND"
+                ).model_dump()
             )
-        
-        rating = RatingInfo(
-            average_rating=product_data.get("average_rating", 0.0),
-            rating_count=product_data.get("rating_count", 0)
+        return ProductResponse(
+            success=True,
+            data=ProductDetail(**product)
         )
-        
-        product = ProductDetail(
-            id=product_data["product_id"],
-            name=product_data["name"],
-            description=product_data["description"],
-            price=product_data["price"],
-            category=product_data["category"],
-            stock_quantity=product_data["stock_quantity"],
-            image_url=product_data["image_url"],
-            rating=rating
-        )
-        
-        return ProductResponse(success=True, data=product)
-    
     except HTTPException:
         raise
     except Exception as e:
-        return ProductResponse(
-            success=False,
-            error=f"Internal server error: {str(e)}"
+        raise HTTPException(
+            status_code=500,
+            detail=ErrorResponse(
+                message="Internal server error",
+                error_code="INTERNAL_ERROR"
+            ).model_dump()
         )
 
-@router.get("/products", response_model=dict)
-async def list_products(category: str = Query(None), limit: int = Query(20, ge=1, le=100)):
+@router.get(
+    "/products",
+    response_model=dict,
+    responses={200: {"description": "List of products"}, 500: {"model": ErrorResponse}}
+)
+async def list_all_products(
+    category: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0)
+):
     """
-    List products with optional category filtering.
+    List all products with optional filtering by category.
+    Supports pagination via limit and offset.
     """
     try:
-        products = await get_product_by_id(None, category=category, limit=limit)
-        return {"success": True, "data": products, "count": len(products)}
+        products, total = await list_products(category=category, limit=limit, offset=offset)
+        return {
+            "success": True,
+            "data": products,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": total
+            }
+        }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        raise HTTPException(
+            status_code=500,
+            detail=ErrorResponse(
+                message="Internal server error",
+                error_code="INTERNAL_ERROR"
+            ).model_dump()
+        )

@@ -2,6 +2,36 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../api'
 
+function SimilarProducts({ productId }) {
+  const navigate = useNavigate()
+  const [similar, setSimilar] = useState([])
+  useEffect(() => {
+    setSimilar([])
+    api.getSimilarProducts(productId)
+      .then(r => setSimilar(r.data.similar_products || []))
+      .catch(() => setSimilar([]))
+  }, [productId])
+  if (similar.length === 0) return null
+  return (
+    <div className="mt-12">
+      <h2 className="text-lg font-semibold text-gray-800 mb-4">You may also like</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {similar.map(p => (
+          <div key={p.product_id} onClick={() => navigate(`/products/${p.product_id}`)}
+            className="bg-white border border-gray-100 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all group">
+            <div className="bg-gray-50 rounded-lg p-3 mb-3 flex items-center justify-center h-32">
+              <img src={p.image_url} alt={p.name} className="max-h-24 object-contain group-hover:scale-105 transition-transform"/>
+            </div>
+            <p className="text-xs text-gray-400 capitalize mb-1">{p.category}</p>
+            <p className="text-sm font-medium text-gray-800 leading-snug line-clamp-2 mb-2">{p.name}</p>
+            <p className="text-indigo-600 font-bold text-sm">£{Number(p.price).toFixed(2)}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -13,23 +43,19 @@ export default function ProductDetailPage() {
     if (!s) { s = Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('session_id', s) }
     return s
   })()
-
   useEffect(() => {
     api.getProduct(id).then(r => setProduct(r.data)).catch(() => navigate('/'))
   }, [id])
-
   const addToCart = async () => {
     await api.addToCart(sessionId, { product_id: id, qty })
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
   }
-
   if (!product) return (
     <div className="flex justify-center items-center h-64">
       <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full"/>
     </div>
   )
-
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
       <button onClick={() => navigate(-1)} className="text-indigo-600 text-sm mb-6 hover:underline">← Back</button>
@@ -55,6 +81,7 @@ export default function ProductDetailPage() {
           </div>
         </div>
       </div>
+      <SimilarProducts productId={id} />
     </div>
   )
 }

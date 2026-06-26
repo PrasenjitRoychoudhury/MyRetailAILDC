@@ -1,0 +1,57 @@
+{
+    "Service": {
+        "ServiceName": "retail-order",
+        "ServiceId": "5a58ff9bcf884c81b00ff5d22f84e052",
+        "ServiceArn": "arn:aws:apprunner:us-east-1:820242904343:service/retail-order/5a58ff9bcf884c81b00ff5d22f84e052",
+        "ServiceUrl": "7xkmpkbemc.us-east-1.awsapprunner.com",
+        "CreatedAt": "2026-06-21T18:47:06+00:00",
+        "UpdatedAt": "2026-06-24T23:41:41+00:00",
+        "Status": "OPERATION_IN_PROGRESS",
+        "SourceConfiguration": {
+            "ImageRepository": {
+                "ImageIdentifier": "820242904343.dkr.ecr.us-east-1.amazonaws.com/retail/order:e9a8b75e07ad93bf3b099d91477abb7b71ddbbdf",
+                "ImageConfiguration": {
+                    "RuntimeEnvironmentVariables": {
+                        "AWS_DEFAULT_REGION": "us-east-1",
+                        "DYNAMODB_TABLE": "retail-platform",
+                        "ENV": "prod"
+                    },
+                    "Port": "8003"
+                },
+                "ImageRepositoryType": "ECR"
+            },
+            "AutoDeploymentsEnabled": false,
+            "AuthenticationConfiguration": {
+                "AccessRoleArn": "arn:aws:iam::820242904343:role/retail-apprunner-access-role"
+            }
+        },
+        "InstanceConfiguration": {
+            "Cpu": "1024",
+            "Memory": "2048",
+            "InstanceRoleArn": "arn:aws:iam::820242904343:role/retail-apprunner-instance-role"
+        },
+        "HealthCheckConfiguration": {
+            "Protocol": "HTTP",
+            "Path": "/v1/health",
+            "Interval": 5,
+            "Timeout": 2,
+            "HealthyThreshold": 1,
+            "UnhealthyThreshold": 5
+        },
+        "AutoScalingConfigurationSummary": {
+            "AutoScalingConfigurationArn": "arn:aws:apprunner:us-east-1:820242904343:autoscalingconfiguration/DefaultConfiguration/1/00000000000000000000000000000001",
+            "AutoScalingConfigurationName": "DefaultConfiguration",
+            "AutoScalingConfigurationRevision": 1
+        },
+        "NetworkConfiguration": {
+            "EgressConfiguration": {
+                "EgressType": "DEFAULT"
+            },
+            "IngressConfiguration": {
+                "IsPubliclyAccessible": true
+            },
+            "IpAddressType": "IPV4"
+        }
+    },
+    "OperationId": "a941d4bc8c924a17b345ea9d9efab2f5"
+}

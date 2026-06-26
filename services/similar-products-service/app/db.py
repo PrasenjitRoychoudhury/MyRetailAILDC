@@ -10,23 +10,11 @@ table = dynamodb.Table(TABLE_NAME)
 
 
 async def get_product_category(product_id: str) -> Optional[str]:
-    """
-    Retrieve the category of a product using GetItem.
-    PK=PRODUCT#{product_id}, SK=METADATA
-    """
-    try:
-        response = table.get_item(
-            Key={
-                "PK": f"PRODUCT#{product_id}",
-                "SK": "METADATA"
-            }
-        )
-        item = response.get("Item")
-        if item:
-            return item.get("category")
-        return None
-    except Exception:
-        return None
+    response = table.get_item(
+        Key={"PK": f"PRODUCT#{product_id}", "SK": "METADATA"}
+    )
+    item = response.get("Item")
+    return item.get("category") if item else None
 
 
 async def get_similar_products(
@@ -34,42 +22,28 @@ async def get_similar_products(
     category: str,
     limit: int = 4
 ) -> List[SimilarProduct]:
-    """
-    Find similar products using Scan with FilterExpression.
-    Excludes current product and returns products in same category.
-    """
     try:
-        response = table.scan(
-            FilterExpression="#category = :cat AND PK <> :pk",
-            ExpressionAttributeNames={
-                "#category": "category"
-            },
+        response = table.query(
+            IndexName="GSI1",
+            KeyConditionExpression="GSI1PK = :gsi1pk",
+            FilterExpression="PK <> :exclude",
             ExpressionAttributeValues={
-                ":cat": category,
-                ":pk": f"PRODUCT#{product_id}"
+                ":gsi1pk": f"CATEGORY#{category}",
+                ":exclude": f"PRODUCT#{product_id}"
             },
-            ProjectionExpression="PK,#name,#price,image_url,#category",
-            Limit=limit
+            Limit=20
         )
-        
-        items = response.get("Items", [])
-        similar_products = []
-        
-        for item in items:
-            # Strip PRODUCT# prefix from PK to get product_id
-            pk = item.get("PK", "")
-            extracted_product_id = pk.replace("PRODUCT#", "")
-            
-            similar_products.append(
-                SimilarProduct(
-                    product_id=extracted_product_id,
-                    name=item.get("name", ""),
-                    price=float(item.get("price", 0)),
-                    image_url=item.get("image_url", ""),
-                    category=item.get("category", "")
-                )
+        items = response.get("Items", [])[:limit]
+        return [
+            SimilarProduct(
+                product_id=item.get("product_id", item.get("PK","").replace("PRODUCT#","")),
+                name=item.get("name", ""),
+                price=float(item.get("price", 0)),
+                image_url=item.get("image_url", ""),
+                category=item.get("category", "")
             )
-        
-        return similar_products
-    except Exception:
+            for item in items
+        ]
+    except Exception as e:
+        print(f"[db] get_similar_products error: {e}")
         return []

@@ -1,89 +1,96 @@
 import pytest
 from httpx import AsyncClient
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch, AsyncMock
 from app.main import app
+
 
 @pytest.mark.asyncio
 async def test_health_endpoint():
-    """Test GET /health returns healthy status."""
     async with AsyncClient(app=app, base_url="http://test") as client:
         response = await client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "healthy", "service": "similar-products-service"}
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert data["service"] == "similar-products-service"
+
 
 @pytest.mark.asyncio
 async def test_similar_products_happy_path():
-    """Test GET /v1/similar/{product_id} with valid product and similar items."""
     mock_product = {
+        "PK": "PRODUCT#11",
+        "SK": "METADATA",
         "product_id": "11",
         "name": "Test Product",
         "category": "electronics",
         "price": 100.0,
-        "image_url": "https://example.com/test.jpg",
-        "rating_rate": 4.5,
-        "rating_count": 10
     }
+    
     mock_similar = [
         {
-            "product_id": "12",
-            "name": "WD 4TB Gaming Drive",
-            "category": "electronics",
-            "price": 114.0,
-            "image_url": "https://dfa35pzjkre3c.cloudfront.net/images/12.jpg",
-            "rating_rate": 4.8,
-            "rating_count": 150
+            "PK": "PRODUCT#9",
+            "SK": "METADATA",
+            "product_id": "9",
+            "name": "WD 2TB Elements",
+            "price": 64.0,
+            "image_url": "https://dfa35pzjkre3c.cloudfront.net/images/9.jpg",
+            "rating_rate": 3.3,
         },
         {
-            "product_id": "13",
+            "PK": "PRODUCT#10",
+            "SK": "METADATA",
+            "product_id": "10",
             "name": "Another Product",
-            "category": "electronics",
-            "price": 95.0,
-            "image_url": "https://example.com/product13.jpg",
-            "rating_rate": 4.2,
-            "rating_count": 80
-        }
+            "price": 75.0,
+            "image_url": "https://example.com/image.jpg",
+            "rating_rate": 4.0,
+        },
     ]
     
-    with patch("app.db.get_product", new_callable=AsyncMock) as mock_get, \
-         patch("app.db.query_similar_products", new_callable=AsyncMock) as mock_query:
-        mock_get.return_value = mock_product
-        mock_query.return_value = mock_similar
-        
-        async with AsyncClient(app=app, base_url="http://test") as client:
-            response = await client.get("/v1/similar/11")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["product_id"] == "11"
-        assert len(data["similar_products"]) == 2
-        assert data["count"] == 2
-        assert data["similar_products"][0]["product_id"] == "12"
-        assert data["similar_products"][0]["price"] == 114.0
-        assert data["similar_products"][0]["rating_rate"] == 4.8
+    with patch("app.db.get_product", new_callable=AsyncMock) as mock_get:
+        with patch("app.db.query_similar_products", new_callable=AsyncMock) as mock_query:
+            mock_get.return_value = mock_product
+            mock_query.return_value = mock_similar
+            
+            async with AsyncClient(app=app, base_url="http://test") as client:
+                response = await client.get("/v1/similar/11")
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert data["product_id"] == "11"
+                assert data["count"] == 2
+                assert len(data["similar_products"]) == 2
+                
+                # Check first product (price sorted ascending)
+                first = data["similar_products"][0]
+                assert first["product_id"] == "9"
+                assert first["name"] == "WD 2TB Elements"
+                assert first["price"] == 64.0
+                assert first["image_url"] == "https://dfa35pzjkre3c.cloudfront.net/images/9.jpg"
+                assert first["rating_rate"] == 3.3
+
 
 @pytest.mark.asyncio
-async def test_similar_products_product_not_found():
-    """Test GET /v1/similar/{product_id} when product does not exist."""
+async def test_similar_products_not_found():
     with patch("app.db.get_product", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = None
         
         async with AsyncClient(app=app, base_url="http://test") as client:
-            response = await client.get("/v1/similar/nonexistent")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["product_id"] == "nonexistent"
-        assert data["similar_products"] == []
-        assert data["count"] == 0
+            response = await client.get("/v1/similar/999")
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["product_id"] == "999"
+            assert data["count"] == 0
+            assert data["similar_products"] == []
+
 
 @pytest.mark.asyncio
 async def test_similar_products_no_category():
-    """Test GET /v1/similar/{product_id} when product has no category."""
     mock_product = {
+        "PK": "PRODUCT#11",
+        "SK": "METADATA",
         "product_id": "11",
         "name": "Test Product",
-        "price": 100.0,
-        "image_url": "https://example.com/test.jpg"
     }
     
     with patch("app.db.get_product", new_callable=AsyncMock) as mock_get:
@@ -91,62 +98,68 @@ async def test_similar_products_no_category():
         
         async with AsyncClient(app=app, base_url="http://test") as client:
             response = await client.get("/v1/similar/11")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["product_id"] == "11"
-        assert data["similar_products"] == []
-        assert data["count"] == 0
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["product_id"] == "11"
+            assert data["count"] == 0
+            assert data["similar_products"] == []
+
 
 @pytest.mark.asyncio
 async def test_similar_products_empty_results():
-    """Test GET /v1/similar/{product_id} when no similar products exist."""
     mock_product = {
+        "PK": "PRODUCT#11",
+        "SK": "METADATA",
         "product_id": "11",
         "name": "Test Product",
         "category": "electronics",
-        "price": 100.0,
-        "image_url": "https://example.com/test.jpg",
-        "rating_rate": 4.5
     }
     
-    with patch("app.db.get_product", new_callable=AsyncMock) as mock_get, \
-         patch("app.db.query_similar_products", new_callable=AsyncMock) as mock_query:
-        mock_get.return_value = mock_product
-        mock_query.return_value = []
-        
-        async with AsyncClient(app=app, base_url="http://test") as client:
-            response = await client.get("/v1/similar/11")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["product_id"] == "11"
-        assert data["similar_products"] == []
-        assert data["count"] == 0
+    with patch("app.db.get_product", new_callable=AsyncMock) as mock_get:
+        with patch("app.db.query_similar_products", new_callable=AsyncMock) as mock_query:
+            mock_get.return_value = mock_product
+            mock_query.return_value = []
+            
+            async with AsyncClient(app=app, base_url="http://test") as client:
+                response = await client.get("/v1/similar/11")
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert data["product_id"] == "11"
+                assert data["count"] == 0
+                assert data["similar_products"] == []
+
 
 @pytest.mark.asyncio
-async def test_similar_products_max_four_items():
-    """Test GET /v1/similar/{product_id} returns max 4 items."""
+async def test_similar_products_max_four():
     mock_product = {
-        "product_id": "11",
-        "name": "Test Product",
+        "PK": "PRODUCT#1",
+        "SK": "METADATA",
+        "product_id": "1",
         "category": "electronics",
-        "price": 100.0
     }
+    
     mock_similar = [
-        {"product_id": f"{i}", "name": f"Product {i}", "category": "electronics", "price": 100.0 + i, "image_url": "https://example.com/test.jpg", "rating_rate": 5.0 - (i * 0.1)}
-        for i in range(12, 17)
+        {
+            "product_id": str(i),
+            "name": f"Product {i}",
+            "price": float(50 + i * 10),
+            "image_url": f"https://example.com/{i}.jpg",
+            "rating_rate": 4.0,
+        }
+        for i in range(2, 6)
     ]
     
-    with patch("app.db.get_product", new_callable=AsyncMock) as mock_get, \
-         patch("app.db.query_similar_products", new_callable=AsyncMock) as mock_query:
-        mock_get.return_value = mock_product
-        mock_query.return_value = mock_similar
-        
-        async with AsyncClient(app=app, base_url="http://test") as client:
-            response = await client.get("/v1/similar/11")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["similar_products"]) == 4
-        assert data["count"] == 4
+    with patch("app.db.get_product", new_callable=AsyncMock) as mock_get:
+        with patch("app.db.query_similar_products", new_callable=AsyncMock) as mock_query:
+            mock_get.return_value = mock_product
+            mock_query.return_value = mock_similar
+            
+            async with AsyncClient(app=app, base_url="http://test") as client:
+                response = await client.get("/v1/similar/1")
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert data["count"] == 4
+                assert len(data["similar_products"]) == 4

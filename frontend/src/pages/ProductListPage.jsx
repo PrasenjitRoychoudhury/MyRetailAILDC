@@ -18,7 +18,7 @@ export default function ProductListPage() {
     const req = search
       ? api.search({ q: search, ...(selectedCat && { category: selectedCat }) })
       : api.getProducts(selectedCat ? { category: selectedCat } : {})
-    req.then(r => setProducts(r.data.products || r.data.results || []))
+    req.then(r => setProducts(r.data.data || r.data.products || r.data.results || []))
        .finally(() => setLoading(false))
   }, [selectedCat, search])
 
@@ -51,7 +51,7 @@ export default function ProductListPage() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
           {products.map(p => (
-            <Link key={p.product_id} to={`/products/${p.product_id}`}
+            <Link key={p.id || p.product_id} to={`/products/${p.id || p.product_id}`}
               className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow overflow-hidden">
               <div className="h-48 flex items-center justify-center p-4 bg-gray-50">
                 <img src={p.image_url} alt={p.name} className="max-h-full max-w-full object-contain"/>

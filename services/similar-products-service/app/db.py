@@ -1,6 +1,7 @@
-import boto3
 import os
-from typing import Optional, Dict, Any, List
+import boto3
+from boto3.dynamodb.conditions import Key, Attr
+from typing import Optional, List, Dict, Any
 
 TABLE_NAME = os.getenv("TABLE_NAME", "retail-platform")
 
@@ -8,10 +9,10 @@ dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(TABLE_NAME)
 
 
-async def get_product(product_id: str) -> Optional[Dict[str, Any]]:
+def get_product_by_id(product_id: str) -> Optional[Dict[str, Any]]:
     """
     Retrieve a product by product_id from DynamoDB.
-    PK = PRODUCT#{product_id}, SK = METADATA
+    Returns None if product not found.
     """
     try:
         response = table.get_item(
@@ -20,37 +21,37 @@ async def get_product(product_id: str) -> Optional[Dict[str, Any]]:
                 "SK": "METADATA"
             }
         )
-        return response.get("Item")
-    except Exception as e:
-        print(f"Error retrieving product {product_id}: {e}")
+        item = response.get("Item")
+        if item:
+            item["id"] = product_id
+        return item
+    except Exception:
         return None
 
 
-async def scan_products_by_category(category: str) -> List[Dict[str, Any]]:
+def get_similar_products(category: str, exclude_product_id: str) -> List[Dict[str, Any]]:
     """
-    Scan retail-platform table with filter expression on category attribute.
-    Returns all products in the specified category.
+    Scan DynamoDB for all products in a given category.
+    Exclude the product with exclude_product_id.
+    Sort by rating (average_rating) in descending order.
     """
     try:
-        products = []
         response = table.scan(
-            FilterExpression="#cat = :category",
-            ExpressionAttributeNames={"#cat": "category"},
-            ExpressionAttributeValues={":category": category}
+            FilterExpression=Attr("category").eq(category)
         )
-        
-        products.extend(response.get("Items", []))
-        
-        while "LastEvaluatedKey" in response:
-            response = table.scan(
-                FilterExpression="#cat = :category",
-                ExpressionAttributeNames={"#cat": "category"},
-                ExpressionAttributeValues={":category": category},
-                ExclusiveStartKey=response["LastEvaluatedKey"]
-            )
-            products.extend(response.get("Items", []))
-        
-        return products
-    except Exception as e:
-        print(f"Error scanning products by category {category}: {e}")
+        items = response.get("Items", [])
+
+        filtered_items = []
+        for item in items:
+            item_id = item.get("id")
+            if item_id and item_id != exclude_product_id:
+                filtered_items.append(item)
+
+        filtered_items.sort(
+            key=lambda x: float(x.get("rating", {}).get("average_rating", 0)),
+            reverse=True
+        )
+
+        return filtered_items
+    except Exception:
         return []

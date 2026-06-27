@@ -1,16 +1,18 @@
 import os
 import boto3
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 from typing import Optional, List, Dict, Any
 
-table_name = os.getenv("TABLE_NAME", "retail-platform")
+TABLE_NAME = os.getenv("TABLE_NAME", "retail-platform")
+
+# Initialize DynamoDB resource
 dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
-table = dynamodb.Table(table_name)
+table = dynamodb.Table(TABLE_NAME)
+
 
 async def get_product(product_id: str) -> Optional[Dict[str, Any]]:
     """
-    Retrieve a product by product_id from DynamoDB.
-    Returns the item dict or None if not found.
+    Get a product by product_id using PK=PRODUCT#{product_id}, SK=METADATA
     """
     try:
         response = table.get_item(
@@ -20,36 +22,38 @@ async def get_product(product_id: str) -> Optional[Dict[str, Any]]:
             }
         )
         return response.get("Item")
-    except Exception as e:
-        print(f"Error fetching product {product_id}: {e}")
+    except Exception:
         return None
 
-async def query_similar_products(category: str, exclude_product_id: str) -> List[Dict[str, Any]]:
+
+async def query_similar_products(
+    category: str, exclude_product_id: str, limit: int = 4
+) -> List[Dict[str, Any]]:
     """
-    Query GSI1 for all products in the same category.
-    Exclude the requested product_id and sort by rating_rate descending.
-    Return up to 4 items.
+    Query products in the same category using GSI1.
+    GSI1PK=CATEGORY#{category}, GSI1SK=PRODUCT#{product_id}
+    Excludes the queried product and returns up to 4 items sorted by price ascending.
     """
     try:
         response = table.query(
             IndexName="GSI1",
-            KeyConditionExpression=Key("GSI1PK").eq(f"CATEGORY#{category}")
+            KeyConditionExpression=Key("GSI1PK").eq(f"CATEGORY#{category}"),
         )
         
         items = response.get("Items", [])
         
+        # Filter out the current product and sort by price
         filtered_items = [
             item for item in items
             if item.get("product_id", "") != exclude_product_id
         ]
         
-        sorted_items = sorted(
-            filtered_items,
-            key=lambda x: float(x.get("rating_rate", 0)),
-            reverse=True
+        # Sort by price ascending
+        filtered_items.sort(
+            key=lambda x: float(x.get("price", 0))
         )
         
-        return sorted_items[:4]
-    except Exception as e:
-        print(f"Error querying similar products for category {category}: {e}")
+        # Return first 4 items
+        return filtered_items[:limit]
+    except Exception:
         return []

@@ -1,40 +1,41 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from app.models import SimilarProductsResponse, SimilarProduct
-from app.db import get_product, scan_products_by_category
-from decimal import Decimal
+from app.db import get_product_by_id, query_products_by_category
 
 router = APIRouter(prefix="/v1", tags=["similar-products"])
 
-def _f(val):
-    if isinstance(val, Decimal): return float(val)
-    try: return float(val)
-    except: return 0.0
-
-@router.get("/similar/{product_id}")
+@router.get("/similar/{product_id}", response_model=SimilarProductsResponse)
 async def get_similar_products(product_id: str) -> SimilarProductsResponse:
-    product = get_product(product_id)
+    """
+    Retrieve up to 4 similar products from the same category.
+    Always returns HTTP 200 with empty list if product not found or no similar products exist.
+    """
+    product = get_product_by_id(product_id)
+    
     if not product:
         return SimilarProductsResponse(product_id=product_id, similar_products=[], count=0)
-
-    category = product.get("category")
+    
+    category = product.get("category", "")
+    
     if not category:
         return SimilarProductsResponse(product_id=product_id, similar_products=[], count=0)
-
-    products_in_category = scan_products_by_category(category)
-
-    similar = []
-    for p in products_in_category:
-        pid = p.get("product_id", p.get("id", ""))
-        if pid == product_id:
-            continue
-        similar.append(SimilarProduct(
-            product_id=pid,
-            name=p.get("name", ""),
-            price=_f(p.get("price", 0)),
-            image_url=p.get("image_url", ""),
-            rating=_f(p.get("rating_rate", p.get("rating", {}).get("average_rating", 0) if isinstance(p.get("rating"), dict) else 0))
-        ))
-
-    similar.sort(key=lambda x: x.rating, reverse=True)
-    similar = similar[:4]
-    return SimilarProductsResponse(product_id=product_id, similar_products=similar, count=len(similar))
+    
+    similar = query_products_by_category(category, exclude_product_id=product_id)
+    
+    similar_list = []
+    for item in similar[:4]:
+        similar_list.append(
+            SimilarProduct(
+                product_id=item.get("id", ""),
+                name=item.get("name", ""),
+                price=float(item.get("price", 0)),
+                image_url=item.get("image_url", ""),
+                rating_rate=float(item.get("rating_rate", 0))
+            )
+        )
+    
+    return SimilarProductsResponse(
+        product_id=product_id,
+        similar_products=similar_list,
+        count=len(similar_list)
+    )

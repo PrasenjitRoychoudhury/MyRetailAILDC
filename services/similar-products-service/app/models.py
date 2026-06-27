@@ -1,19 +1,14 @@
 from pydantic import BaseModel, Field
 from typing import List
 
-
-class SimilarProductItem(BaseModel):
-    product_id: str = Field(..., alias="id")
+class SimilarProduct(BaseModel):
+    product_id: str
     name: str
     price: float
     image_url: str
-    rating: float
-
-    class Config:
-        populate_by_name = True
-
+    rating_rate: float
 
 class SimilarProductsResponse(BaseModel):
     product_id: str
-    similar_products: List[SimilarProductItem]
+    similar_products: List[SimilarProduct] = Field(default_factory=list)
     count: int

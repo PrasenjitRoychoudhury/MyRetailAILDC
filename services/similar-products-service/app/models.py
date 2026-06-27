@@ -1,12 +1,14 @@
 from pydantic import BaseModel, Field
 from typing import List
 
+
 class SimilarProductItem(BaseModel):
     product_id: str
     name: str
     price: float
     image_url: str
     rating_rate: float
+
 
 class SimilarProductsResponse(BaseModel):
     product_id: str

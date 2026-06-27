@@ -44,7 +44,7 @@ export default function ProductDetailPage() {
     return s
   })()
   useEffect(() => {
-    api.getProduct(id).then(r => setProduct(r.data)).catch(() => navigate('/'))
+    api.getProduct(id).then(r => setProduct(r.data.data || r.data)).catch(() => navigate('/'))
   }, [id])
   const addToCart = async () => {
     await api.addToCart(sessionId, { product_id: id, qty })
@@ -67,7 +67,7 @@ export default function ProductDetailPage() {
           <p className="text-xs text-gray-400 capitalize mb-2">{product.category}</p>
           <h1 className="text-2xl font-bold text-gray-900 mb-4">{product.name}</h1>
           <p className="text-3xl font-bold text-indigo-600 mb-4">£{Number(product.price).toFixed(2)}</p>
-          <p className="text-sm text-gray-500 mb-4">⭐ {product.rating_rate} ({product.rating_count} reviews)</p>
+          <p className="text-sm text-gray-500 mb-4">⭐ {product.rating?.average_rating ?? product.rating_rate ?? 0} ({product.rating?.rating_count ?? product.rating_count ?? 0} reviews)</p>
           <p className="text-gray-600 text-sm leading-relaxed mb-6">{product.description}</p>
           <div className="flex items-center gap-4">
             <select value={qty} onChange={e => setQty(Number(e.target.value))}

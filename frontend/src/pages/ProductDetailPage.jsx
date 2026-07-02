@@ -32,6 +32,53 @@ function SimilarProducts({ productId }) {
   )
 }
 
+/* AUTO-GENERATED: similar-products-service */
+function SimilarProducts({ productId }) {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchSimilarProducts = async () => {
+      try {
+        setLoading(true);
+        const response = await api.getSimilarProducts(productId);
+        setProducts(response.data.similar_products || []);
+        setError(null);
+      } catch (err) {
+        setError(err.message || 'Failed to load similar products');
+        setProducts([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (productId) {
+      fetchSimilarProducts();
+    }
+  }, [productId]);
+
+  if (loading) return <div>Loading similar products...</div>;
+  if (error) return <div>Error: {error}</div>;
+  if (!products.length) return <div>No similar products found</div>;
+
+  return (
+    <div className="similar-products">
+      <h3>Similar Products</h3>
+      <div className="products-grid">
+        {products.map((product) => (
+          <div key={product.product_id} className="product-card">
+            <img src={product.image_url} alt={product.name} />
+            <h4>{product.name}</h4>
+            <p className="price">${product.price.toFixed(2)}</p>
+            <p className="rating">Rating: {product.rating_rate}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -81,6 +128,7 @@ export default function ProductDetailPage() {
           </div>
         </div>
       </div>
+      <SimilarProducts productId={id} />
       <SimilarProducts productId={id} />
     </div>
   )

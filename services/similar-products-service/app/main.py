@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from app.routes import router
 
-app = FastAPI(title="Similar Products Service")
+app = FastAPI(title="similar-products-service", version="1.0.0")
 
 app.include_router(router)
 

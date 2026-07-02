@@ -2,6 +2,54 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../api'
 
+/* AUTO-GENERATED: similar-products-service */
+function SimilarProductsWidget({ productId }) {
+  const [products, setProducts] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+
+  React.useEffect(() => {
+    const fetchSimilarProducts = async () => {
+      try {
+        setLoading(true);
+        const response = await api.getSimilarProducts(productId);
+        setProducts(response.data || []);
+        setError(null);
+      } catch (err) {
+        setError(err.message || 'Failed to load similar products');
+        setProducts([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (productId) {
+      fetchSimilarProducts();
+    }
+  }, [productId]);
+
+  if (loading) return <div>Loading similar products...</div>;
+  if (error) return <div>Error: {error}</div>;
+  if (!products.length) return <div>No similar products found</div>;
+
+  return (
+    <div className="similar-products">
+      <h2>Similar Products</h2>
+      <div className="products-grid">
+        {products.map((product) => (
+          <div key={product.id} className="product-card">
+            <img src={product.image} alt={product.name} />
+            <h3>{product.name}</h3>
+            <p className="price">${product.price}</p>
+            <p className="category">{product.category}</p>
+            <p className="rating">★ {product.averageRating} ({product.ratingCount})</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()

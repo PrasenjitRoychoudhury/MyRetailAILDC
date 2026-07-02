@@ -50,6 +50,7 @@ const api = {
     }),
   getSimilarProducts: (productId) =>
     axios.get(`${API_BASE}/v1/similar/${productId}`),
+  getSimilarProducts: (productId) => axios.get(`${API_BASE}/v1/similar/${productId}`),
 };
 
 export default api;

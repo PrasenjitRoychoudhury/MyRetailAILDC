@@ -48,6 +48,7 @@ const api = {
     axios.post(`${API_BASE}/v1/auth/validate`, {}, {
       headers: { Authorization: `Bearer ${token}` }
     }),
+  getSimilarProducts: (productId) => axios.get(`${API_BASE}/v1/similar-products/${productId}`),
 };
 
 export default api;

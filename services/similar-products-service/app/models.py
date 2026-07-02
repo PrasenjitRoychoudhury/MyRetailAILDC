@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List
 
 
-class SimilarProductItem(BaseModel):
+class SimilarProduct(BaseModel):
     product_id: str
     name: str
     price: float
@@ -12,5 +12,5 @@ class SimilarProductItem(BaseModel):
 
 class SimilarProductsResponse(BaseModel):
     product_id: str
-    similar_products: List[SimilarProductItem]
+    similar_products: List[SimilarProduct]
     count: int

@@ -2,6 +2,47 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../api'
 
+/* AUTO-GENERATED: loyalty-points-service */
+function LoyaltyPoints({ productId }) {
+  const [points, setPoints] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+
+  React.useEffect(() => {
+    const fetchPoints = async () => {
+      try {
+        setLoading(true);
+        const response = await api.getLoyaltyPoints(productId);
+        setPoints(response.data);
+        setError(null);
+      } catch (err) {
+        setError(err.message || 'Failed to load loyalty points');
+        setPoints(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPoints();
+  }, [productId]);
+
+  if (loading) return <div className="loyalty-points-loading">Loading loyalty points...</div>;
+  if (error) return <div className="loyalty-points-error">Error: {error}</div>;
+  if (!points) return <div className="loyalty-points-empty">No loyalty points data available</div>;
+
+  return (
+    <div className="loyalty-points-widget">
+      <h3>Your Loyalty Points</h3>
+      <div className="points-balance">
+        <span className="points-value">{points.points_balance}</span>
+        <span className="points-label">points</span>
+      </div>
+      <p className="points-info">1 point = £1 spent</p>
+      <p className="points-updated">Last updated: {new Date(points.updated_at).toLocaleDateString()}</p>
+    </div>
+  );
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()

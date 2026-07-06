@@ -48,6 +48,7 @@ const api = {
     axios.post(`${API_BASE}/v1/auth/validate`, {}, {
       headers: { Authorization: `Bearer ${token}` }
     }),
+  getLoyaltyPoints: (customerId) => axios.get(`${API_BASE}/v1/loyalty-points/${customerId}`),
 };
 
 export default api;
